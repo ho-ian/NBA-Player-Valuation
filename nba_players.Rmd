@@ -1,0 +1,113 @@
+---
+title: "NBA Player Valuation"
+author: "Ian Ho"
+date: "May 16, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressWarnings(library(nbastatR))
+library(highcharter)
+```
+
+```{r warning=FALSE}
+salaries = nba_insider_salaries(assume_player_opt_out = T, assume_team_doesnt_exercise = T, return_message=F)
+```
+
+```{r}
+salaries = salaries[salaries['slugSeason'] == '2018-19',]
+salaries$logsalary = log(salaries$value)
+```
+
+```{r}
+teams_players_stats(seasons = 2019, types = c("player"),
+  tables = c("clutch", "defense", "general", "hustle"), season_types = "Regular Season",
+  measures = "Advanced", modes = "PerGame", defenses = "Overall",
+  is_plus_minus = T, is_pace_adjusted = T,
+  clutch_times = "Last 5 Minutes", ahead_or_behind = "Ahead or Behind",
+  general_ranges = "Overall", dribble_ranges = "0 Dribbles",
+  shot_distance_ranges = "By Zone", touch_time_ranges = NA,
+  closest_defender_ranges = NA, point_diffs = 5, starters_bench = NA,
+  assign_to_environment = TRUE, add_mode_names = T)
+```
+
+```{r}
+bref_players_stats(seasons = 2019, tables = c("advanced"),
+  include_all_nba = F, assign_to_environment = TRUE,
+  widen_data = TRUE, join_data = TRUE)
+```
+
+
+```{r}
+names(dataBREFPlayerAdvanced)[names(dataBREFPlayerAdvanced) == 'idPlayerNBA'] <- 'idPlayer'
+general = merge(dataGeneralPlayers, dataBREFPlayerAdvanced, by="idPlayer")
+general
+```
+
+```{r}
+hchart(general, "scatter", hcaes(x="ortg", y="ratioOBPM", group="slugPosition", name="namePlayer.x", ortg="ortg", OBPM="ratioOBPM")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />ortg: {point.ortg}<br />OBPM: {point.OBPM}") %>%
+  hc_title(text="Offensive Rating vs. Offensive Box Plus Minus") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_elementary())
+```
+
+```{r}
+hchart(general, "scatter", hcaes(x="drtg", y="ratioDBPM", group="slugPosition", name="namePlayer.x", drtg="drtg", DBPM="ratioDBPM")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />drtg: {point.drtg}<br />DBPM: {point.DBPM}") %>%
+  hc_title(text="Defensive Rating vs. Defensive Box Plus Minus") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_elementary())
+```
+
+
+```{r}
+salary_bpm = merge(dataBREFPlayerAdvanced, salaries, by="namePlayer")
+salary_bpm
+```
+
+```{r}
+hchart(salary_bpm, "scatter", hcaes(x="logsalary", y="ratioBPM", group="slugPosition", name="namePlayer", salary="value", BPM="ratioBPM")) %>%
+  hc_yAxis(plotLines=list(
+    list(
+    value=5,
+    color='#00ff00',
+    width=1.5,
+    label = list(text = "+5 (All-NBA)",
+                       style = list( color = '#00ff00', fontWeight = 'bold'   )
+  )),
+  list(
+    value=-5,
+    color='#ff0000',
+    width=1.5,
+    label = list(text = "-5 (Bad)",
+                       style = list( color = '#ff0000', fontWeight = 'bold'   )
+                 ))
+  )) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}<br />BPM: {point.BPM}") %>%
+  hc_title(text="Salary vs. Box Plus Minus") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_darkunica())
+```
