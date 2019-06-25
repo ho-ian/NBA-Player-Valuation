@@ -1,31 +1,43 @@
 ---
 title: "NBA Player Valuation"
 author: "Ian Ho"
-date: "May 16, 2019"
+date: "June 23, 2019"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Evaluating NBA Player Performances with respect to their Salaries
+=========
+
+In this R markdown file, I will try to determine whether a player has been overpaid or underpaid in the 2018-19 season based on their on court performances and statistics with respect to their salary and the rest of the league.
+
+```{r}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(highcharter))
+```
+
+I use nbastatR (http://asbcllc.com/nbastatR/) to collect the data
+
+```{r warning=FALSE}
+library(nbastatR)
 ```
 
 ```{r}
-suppressWarnings(library(nbastatR))
-library(highcharter)
-```
-
-```{r warning=FALSE}
-salaries = nba_insider_salaries(assume_player_opt_out = T, assume_team_doesnt_exercise = T, return_message=F)
+salaries = nba_insider_salaries(assume_player_opt_out = T, assume_team_doesnt_exercise = T, return_message=T)
 ```
 
 ```{r}
 salaries = salaries[salaries['slugSeason'] == '2018-19',]
-salaries$logsalary = log(salaries$value)
 ```
+
+Here I collect data about every players' clutch, defense, general, and hustle statistics.
 
 ```{r}
 teams_players_stats(seasons = 2019, types = c("player"),
-  tables = c("clutch", "defense", "general", "hustle"), season_types = "Regular Season",
+  tables = c("defense", "general"), season_types = "Regular Season",
   measures = "Advanced", modes = "PerGame", defenses = "Overall",
   is_plus_minus = T, is_pace_adjusted = T,
   clutch_times = "Last 5 Minutes", ahead_or_behind = "Ahead or Behind",
@@ -35,22 +47,23 @@ teams_players_stats(seasons = 2019, types = c("player"),
   assign_to_environment = TRUE, add_mode_names = T)
 ```
 
+Basketball Reference Advanced Statistics gives me more insightful stats like offensive box plus minus or win share ratios.
+
 ```{r}
-bref_players_stats(seasons = 2019, tables = c("advanced"),
-  include_all_nba = F, assign_to_environment = TRUE,
-  widen_data = TRUE, join_data = TRUE)
+bref_players_stats(seasons = "2019", tables = c("advanced", "per_game"))
 ```
 
 
 ```{r}
 names(dataBREFPlayerAdvanced)[names(dataBREFPlayerAdvanced) == 'idPlayerNBA'] <- 'idPlayer'
 general = merge(dataGeneralPlayers, dataBREFPlayerAdvanced, by="idPlayer")
-general
 ```
 
+In the next two charts, I plot every players' rating vs their box plus minus. I will use this to determine a players' categorical difference. If they are either an offensive player or a defensive player. Although basketball isn't defined this way as the game goes both ways, we know that there are players known especially for their defensive output and not so much for their offensive output such as Andre Roberson.
+
 ```{r}
-hchart(general, "scatter", hcaes(x="ortg", y="ratioOBPM", group="slugPosition", name="namePlayer.x", ortg="ortg", OBPM="ratioOBPM")) %>%
-  hc_tooltip(pointFormat = "<b>{point.name}</b><br />ortg: {point.ortg}<br />OBPM: {point.OBPM}") %>%
+hchart(general, "scatter", hcaes(x="ortg", y="ratioOBPM", group="slugPosition", name="namePlayer.x", ortg="ortg", OBPM="ratioOBPM", minutes="minutes.x")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />ortg: {point.ortg}<br />OBPM: {point.OBPM}<br />Average Minutes: {point.minutes}") %>%
   hc_title(text="Offensive Rating vs. Offensive Box Plus Minus") %>%
   hc_subtitle(text="NBA 2018-19") %>%
   hc_credits(enabled = TRUE,
@@ -59,12 +72,13 @@ hchart(general, "scatter", hcaes(x="ortg", y="ratioOBPM", group="slugPosition", 
                fontSize = "10px"
                )
              ) %>%
+  hc_chart(zoomType="xy") %>%
   hc_add_theme(hc_theme_elementary())
 ```
 
 ```{r}
-hchart(general, "scatter", hcaes(x="drtg", y="ratioDBPM", group="slugPosition", name="namePlayer.x", drtg="drtg", DBPM="ratioDBPM")) %>%
-  hc_tooltip(pointFormat = "<b>{point.name}</b><br />drtg: {point.drtg}<br />DBPM: {point.DBPM}") %>%
+hchart(general, "scatter", hcaes(x="drtg", y="ratioDBPM", group="slugPosition", name="namePlayer.x", drtg="drtg", DBPM="ratioDBPM", minutes="minutes.x")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />drtg: {point.drtg}<br />DBPM: {point.DBPM}<br />Average Minutes: {point.minutes}") %>%
   hc_title(text="Defensive Rating vs. Defensive Box Plus Minus") %>%
   hc_subtitle(text="NBA 2018-19") %>%
   hc_credits(enabled = TRUE,
@@ -73,18 +87,27 @@ hchart(general, "scatter", hcaes(x="drtg", y="ratioDBPM", group="slugPosition", 
                fontSize = "10px"
                )
              ) %>%
+  hc_chart(zoomType="xy") %>%
   hc_add_theme(hc_theme_elementary())
 ```
 
 
 ```{r}
 salary_bpm = merge(dataBREFPlayerAdvanced, salaries, by="namePlayer")
-salary_bpm
+salary_bpm$minutes.x = round(salary_bpm$minutes/salary_bpm$countGames, digits = 1)
 ```
 
+In the next three charts, I display measures of players' on court output against their salary in the 2018-19 season.
+
+Box Plus Minus
+---------
+
+Here we are looking for players to have a box plus minus of greater than or equal to 0 as 0 inidicates the league average. A +5 on the box plus minus is considered to be at an All-NBA level if kept consistently over the entire season. On the other end of the spectrum, a -5 or lower is considered very poor performance for any player. Therefore in terms of finding an underpaid player, we should expect to see someone that is consistently providing a box plus minus over league average but being paid less than the average. A player would be considered to be overpaid if they are performing below league average or even worse (-5 or below) and is being paid more than the league average salary.
+
 ```{r}
-hchart(salary_bpm, "scatter", hcaes(x="logsalary", y="ratioBPM", group="slugPosition", name="namePlayer", salary="value", BPM="ratioBPM")) %>%
-  hc_yAxis(plotLines=list(
+hchart(salary_bpm, "scatter", hcaes(x="ratioBPM", y="value", group="slugPosition", name="namePlayer", salary="value", BPM="ratioBPM",
+                                    numgames="countGames")) %>%
+  hc_xAxis(plotLines=list(
     list(
     value=5,
     color='#00ff00',
@@ -100,8 +123,18 @@ hchart(salary_bpm, "scatter", hcaes(x="logsalary", y="ratioBPM", group="slugPosi
                        style = list( color = '#ff0000', fontWeight = 'bold'   )
                  ))
   )) %>%
-  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}<br />BPM: {point.BPM}") %>%
-  hc_title(text="Salary vs. Box Plus Minus") %>%
+  hc_yAxis(plotLines=list(
+    list(
+      value=mean(salary_bpm$value),
+                 color="#0099ff",
+                 width=1.5,
+                 label= list(text = "Average NBA Salary",
+                             style=list( color = "#0099ff", fontweight = "light")
+                             ))
+  )) %>%
+  hc_chart(zoomType="xy") %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}<br />BPM: {point.BPM}<br />Number of Games: {point.numgames}") %>%
+  hc_title(text="Box Plus Minus vs. Salary") %>%
   hc_subtitle(text="NBA 2018-19") %>%
   hc_credits(enabled = TRUE,
              text = "data via nbastatR",
@@ -111,3 +144,267 @@ hchart(salary_bpm, "scatter", hcaes(x="logsalary", y="ratioBPM", group="slugPosi
              ) %>%
   hc_add_theme(hc_theme_darkunica())
 ```
+
+
+```{r}
+minute_labels = cut(salary_bpm$minutes.x, breaks=5,include.lowest = T, labels=c("Less than 10", "8-15", "15-22", "22-30", "30+"))
+salary_bpm = cbind(salary_bpm, minute_labels)
+```
+
+Average Minutes
+-------
+
+In most cases, we expect that a player that is being paid more, should be playing more minutes. In most cases this measure makes sense as we can see each minute group of players tend to have higher and higher salaries. However, we can still see that some players may be being underpaid like Pascal Siakam, who in the 2018-19 season, plays 31.9 MPG while being paid 1,544,951. Again on the other end, we might see that someone like Ryan Anderson is being paid too much for too little contribution at 20,421,546 for 12.9 MPG.
+
+```{r}
+hchart(salary_bpm, "scatter", hcaes(x="minutes.x", y="value", group="minute_labels", name="namePlayer", salary="value",minutes="minutes.x", numgames="countGames")) %>%
+  hc_yAxis(plotLines=list(
+    list(
+    value=mean(salary_bpm$value),
+    color='#0099ff',
+    width=1.5,
+    label = list(text = "Average NBA Salary",
+                       style = list( color = '#0099ff', fontWeight = 'bold'   )
+  )))) %>%
+  
+  hc_xAxis(plotLines=list(
+    list(
+    value=mean(salary_bpm$minutes.x),
+    color='#ff0000',
+    width=1.5,
+    label = list(text = "Average Minutes Played",
+                       style = list( color = '#ff0000', fontWeight = 'bold'   )
+  )))) %>%
+  hc_chart(zoomType="xy") %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}<br />Average Minutes: {point.minutes}<br />Number of Games: {point.numgames}") %>%
+  hc_title(text="Average Minutes vs. Salary") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_darkunica())
+
+```
+
+Player Efficiency Rating
+------------
+
+This is an advanced measure of a player's performance which goes into detail about how efficiently they may be playing because although they may be playing a lot minutes as the previous chart indicated, they might not be very efficient with their time spent on the court. For the most part, this measure gives somewhat expect answers. We see the all-star calibre players averaging the higher efficiency ratings like Lebron James, Stephen Curry, and James Harden. However, we also see a ridiculously high efficiency rating of 80.4 in Zhou Qi's season while only being paid 506,134. So shouldn't we be paying Zhou Qi more than Lebron James? Although it's easy to just see the numbers and run away wtih them, we often fail to recognize the number of assumptions we make with those calculations. If we highlight Zhou Qi, we would see that he only played 1 game in the entire season. Moreover, if we can find Zhou Qi in the Average Minutes chart, it shows that he played for 1 minute. So if we really considered his output for the entire season, he was being paid 506,134 for 1 minute of most likely blowout game where his offensive and defensive output most likely wouldn't have had an effect on the outcome of the game; in such a case, we could consider that he is being severely overpaid comapred to the rest of the world.  
+
+
+```{r}
+hchart(salary_bpm, "scatter", hcaes(x="ratioPER", y="value", group="slugPosition", name="namePlayer", salary="value", efficiency="ratioPER", numgames="countGames")) %>%
+  hc_yAxis(plotLines=list(
+    list(
+    value=mean(salary_bpm$value),
+    color='#0099ff',
+    width=1.5,
+    label = list(text = "Average NBA Salary",
+                       style = list( color = '#0099ff', fontWeight = 'bold'   )
+  )))) %>%
+  
+  hc_xAxis(plotLines=list(
+    list(
+    value=mean(salary_bpm$ratioPER),
+    color='#ff0000',
+    width=1.5,
+    label = list(text = "Average Player Efficiency Rating",
+                       style = list( color = '#ff0000', fontWeight = 'bold'   )
+  )))) %>%
+  hc_chart(zoomType="xy") %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}<br />PER: {point.efficiency}<br />Number of Games: {point.numgames}") %>%
+  hc_title(text="Ratio PER vs. Salary") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_darkunica())
+```
+
+All of these things tell us that it isn't possible to use a single measure of a player's on court output to determine if they are being underpaid or overpaid. Moreover, we can only have 10 players on the court simultaneously playing, so it is expected to see numbers vary significantly. We also need to keep in mind that while not every player plays, they are there in case other players cannot play and being able to show up and play at the highest level possible at any given moment is an immeasureable quality.
+
+What can I do?
+-------
+
+Although I would be making alot of assumptions, I will do two analyses, offensive and defensive. In both scenarios I split the data by the positions each player plays and then consider their respective position's averages for each measure and salary. Then I will try to scale the data as best as possible with respect to the number of games they play and the number of minutes they play. Afterwards, if they are consistently performing better than the position's league average in each category while being paid less than the position's league average, they would be considered underpaid and vice versa for being overpaid. I will also try to include a correctly paid label for those that are performing where they should be.
+
+Analysis
+====
+
+Offense
+------
+
+Relevant measures of output include Games Played, Minutes Per Game, True Shooting Percentage, Offensive Rating, Player Efficiency Rating, 2 Point Field Goal Made + 2 Point Field Goal Percentage, 3 Point Field Goal Made + 3 Point Field Goal Percentage, Free Throws Made Per Game + Free Throw Percentage, Offensive Rebound Percentage, Turnover Rate (lower is better), Usage Percentage, Offensive Winshare Ratio, and Offensive Box Plus Minus.
+
+Defense
+-----
+
+Relevant measures of output include Games Played, Minutes Per Game, Differential Field Goal Percentage (lower is better), Defensive Rating, Percentage Defensive Rebound, Percentage Steals, Percentage Blocks, Defensive Win Share Ratio, Defensive Box Plus Minus.
+
+```{r}
+library(dplyr)
+library(scales)
+```
+
+```{r}
+offense = merge(dataGeneralPlayers, dataBREFPlayerAdvanced, by="namePlayer")
+offense = merge(offense, dataBREFPlayerPerGame, by="namePlayer")
+defense = merge(offense, dataDefensePlayers, by="namePlayer")
+```
+
+```{r}
+offensive_columns = c('namePlayer', 'slugPosition.x' ,'gp', 'minutes.x', 'ratioAST', 'ortg', 'ratioPER', 'pctTrueShooting', 'fg3mPerGame', 'pctFG3', 'fg2mPerGame', 'pctFG2', 'ftmPerGame', 'pctFT', 'pctORB', 'pctTOV', 'pctUSG.y', 'ratioOWS', 'ratioOBPM' )
+
+defensive_columns = c('namePlayer', 'slugPosition.x','gp.x', 'minutes.x', 'diffFGPct','drtg','pctDRB','pctSTL','pctBLK','ratioDWS','ratioDBPM')
+
+salaries_columns = c('namePlayer', 'slugPosition', 'value')
+```
+
+```{r}
+offense = offense[,offensive_columns]
+defense = defense[,defensive_columns]
+salary = salary_bpm[,salaries_columns]
+```
+
+In all of the offensive and defensive measures, I will be multiplying each measure by the number of games the player played and the number of minutes they play each game. This should help scale out players that only do well in a single game like Zhou Qi because his efficiency only counted for one game whereas players like James Harden should be accounted for many games over the season.
+
+```{r}
+offense$ratioAST = offense$ratioAST * offense$gp * offense$minutes.x
+offense$ortg = offense$ortg * offense$gp * offense$minutes.x
+offense$ratioPER = offense$ratioPER * offense$gp * offense$minutes.x
+offense$pctTrueShooting = offense$pctTrueShooting * offense$gp * offense$minutes.x
+offense$fg3mPerGame = offense$fg3mPerGame * offense$gp * offense$minutes.x
+offense$pctFG3 = offense$pctFG3 * offense$gp * offense$minutes.x
+offense$fg2mPerGame = offense$fg2mPerGame * offense$gp * offense$minutes.x
+offense$pctFG2 = offense$pctFG2 * offense$gp * offense$minutes.x
+offense$ftmPerGame = offense$ftmPerGame * offense$gp * offense$minutes.x
+offense$pctFT = offense$pctFT * offense$gp * offense$minutes.x
+offense$ratioOWS = offense$ratioOWS * offense$gp * offense$minutes.x
+offense$pctORB = offense$pctORB * offense$gp * offense$minutes.x
+offense$pctTOV = offense$pctTOV * offense$gp * offense$minutes.x
+```
+
+```{r}
+defense$diffFGPct = defense$diffFGPct * defense$gp.x * defense$minutes.x
+defense$drtg = defense$drtg * defense$gp.x * defense$minutes.x
+defense$pctDRB = defense$pctDRB * defense$gp.x * defense$minutes.x
+defense$pctSTL = defense$pctSTL * defense$gp.x * defense$minutes.x
+defense$pctBLK = defense$pctBLK * defense$gp.x * defense$minutes.x
+defense$ratioDWS = defense$ratioDWS * defense$gp.x * defense$minutes.x
+```
+
+Turnover rate for offense and diffFGPct for defense, I will subtract each value from 0 to flip their values around in order to keep the calculation correct.
+
+```{r}
+offense$pctTOV = 0-offense$pctTOV
+defense$diffFGPct = 0-defense$diffFGPct
+```
+
+I will scale each of the modified measures from -1 to 1 based on each of the positions to see which players are performing best and worst based on this simple scale. I also scale the players' salaries based on position as well.
+
+```{r}
+offense_scale = offense %>% group_by(slugPosition.x) %>% mutate(ratioAST = rescale(ratioAST, to=c(-1,1)), ortg = rescale(ortg, to=c(-1,1)), ratioPER = rescale(ratioPER, to=c(-1,1)), pctTrueShooting = rescale(pctTrueShooting, to=c(-1,1)), fg3mPerGame = rescale(fg3mPerGame, to=c(-1,1)), pctFG3 = rescale(pctFG3, to=c(-1,1)), fg2mPerGame = rescale(fg2mPerGame, to=c(-1,1)), pctFG2 = rescale(pctFG2, to=c(-1,1)), ftmPerGame = rescale(ftmPerGame, to=c(-1,1)), pctFT = rescale(pctFT, to=c(-1,1)), pctORB = rescale(pctORB, to=c(-1,1)), pctTOV = rescale(pctTOV, to=c(-1,1)), pctUSG.y = rescale(pctUSG.y, to=c(-1,1)), ratioOWS = rescale(ratioOWS, to=c(-1,1)), ratioOBPM = rescale(ratioOBPM, to=c(-1,1)))
+
+defense_scale = defense %>% group_by(slugPosition.x) %>% mutate(diffFGPct = rescale(diffFGPct, to=c(-1,1)), drtg = rescale(drtg, to=c(-1,1)), pctDRB = rescale(pctDRB, to=c(-1,1)), pctSTL = rescale(pctSTL, to=c(-1,1)), pctBLK = rescale(pctBLK, to=c(-1,1)), ratioDWS = rescale(ratioDWS, to=c(-1,1)), ratioDBPM = rescale(ratioDBPM, to=c(-1,1)))
+
+salary_scale = salary %>% group_by(slugPosition) %>% mutate(value = rescale(value, to=c(-1,1)))
+```
+
+```{r}
+offense_scale$score = (offense_scale$ratioAST + offense_scale$ortg + offense_scale$ratioPER + offense_scale$pctTrueShooting + offense_scale$fg3mPerGame + offense_scale$pctFG3 + offense_scale$fg2mPerGame + offense_scale$pctFG2 + offense_scale$ftmPerGame + offense_scale$pctFT + offense_scale$pctORB + offense_scale$pctTOV + offense_scale$pctUSG.y + offense_scale$ratioOWS + offense_scale$ratioOBPM)/15
+
+defense_scale$score = (defense_scale$diffFGPct + defense_scale$drtg + defense_scale$pctDRB + defense_scale$pctSTL + defense_scale$pctBLK + defense_scale$ratioDWS + defense_scale$ratioDBPM)/7
+```
+
+```{r}
+offense_salary = merge(offense_scale, salary_scale, by="namePlayer")
+defense_salary = merge(defense_scale, salary_scale, by="namePlayer")
+```
+
+Results
+======
+
+In the next two charts, I illustrate the players performances versus their salaries with respect to their position. Overall, we are interested in players that are being paid more or less than the league average for their position and are performing better or worse than the league average in their position. This means we are looking at the First and Fourth Quadrants in the chart to determine overpaid and underpaid players. The more to the left a player is located, the worse they are performing and the higher the a player is placed on the y axis, the more the player is being paid. Notably, we see players like Ryan Anderson, Carmelo Anthony, JR Smith, and Pau Gasol in the overpaid category. Some underpaid players in this season are players like Pascal Siakam, Kyle Kuzma, Buddy Hield, and JJ Redick.
+
+```{r}
+hchart(offense_salary, "scatter", hcaes(x="score", y="value", group="slugPosition", name="namePlayer", salary="value")) %>%
+  hc_yAxis(plotLines=list(
+    list(
+    value=0,
+    color='#0099ff',
+    width=1.5,
+    label = list(text = "Average NBA Salary",
+                       style = list( color = '#0099ff', fontWeight = 'bold'   )
+  )))) %>%
+  
+  hc_xAxis(plotLines=list(
+    list(
+    value=0,
+    color='#ff0000',
+    width=1.5,
+    label = list(text = "Average Offensive Score",
+                       style = list( color = '#ff0000', fontWeight = 'bold'   )
+  )))) %>%
+  hc_chart(zoomType="xy") %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}") %>%
+  hc_title(text="Offensive Score vs. Salary Score") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_monokai())
+```
+
+In the defense score vs salary score chart, we see similar results with players such as Pascal Siakam and Kyle Kuzma who have proven to be both good offensively and defensively this season while being paid less than the league average. In the overpaid category, we see Carmelo Anthony, Ryan Anderson, and JR Smith show up again which may be an indication that these players are definitely overpaid (at least for their on court performances). 
+
+
+```{r}
+hchart(defense_salary, "scatter", hcaes(x="score", y="value", group="slugPosition", name="namePlayer", salary="value")) %>%
+  hc_yAxis(plotLines=list(
+    list(
+    value=0,
+    color='#0099ff',
+    width=1.5,
+    label = list(text = "Average NBA Salary",
+                       style = list( color = '#0099ff', fontWeight = 'bold'   )
+  )))) %>%
+  
+  hc_xAxis(plotLines=list(
+    list(
+    value=0,
+    color='#ff0000',
+    width=1.5,
+    label = list(text = "Average Defensive Score",
+                       style = list( color = '#ff0000', fontWeight = 'bold'   )
+  )))) %>%
+  hc_chart(zoomType="xy") %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />salary: {point.value}") %>%
+  hc_title(text="Defensive Score vs. Salary Score") %>%
+  hc_subtitle(text="NBA 2018-19") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_monokai())
+```
+
+
+Conclusion
+=========
+
+In conclusion, I think that the analysis I performed on the players' on court performances with respect to their salaries has a little bit of value in potentially determining player contracts. However, there are far too many immeasurable qualities a player has that data alone cannot capture. Things like being a popular player for the team could significantly boost jersey sales even though they may be perform as well as everyone else on the court isn't taken into account in my analysis. Also, many players who may be veterans in the league with expriing contracts could be playing larger roles for the team while not on the court which is why they may be seen as overpaid like Pau Gasol. Even though he isn't performing as good as he used to, he clearly has a use within the team to help everyone get better in practice and helping rookies and younger players develop their skills. Moreover, there are mixed positions such as SF-SG of PF-SF which have very few players denoted to them which make the calculations askew. For this reason, those players' analysis are likely innacurate as they weren't compared against their rightful positions. Also, this is only taking into account for the regular season and not the pre season or playoffs. Therefore, while this analysis was interesting to perform and see, it is not a flawless way to determine a players value.
+
+
+
+
